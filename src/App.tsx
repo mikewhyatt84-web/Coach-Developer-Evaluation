@@ -18,8 +18,8 @@ export default function App() {
       const result = await evaluateObservations(notes);
       setEvaluation(result);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (err) {
-      setError('Failed to analyze observations. Please try again.');
+    } catch (err: any) {
+      setError(err?.message || 'Failed to analyze observations. Please try again.');
       console.error(err);
     } finally {
       setIsLoading(false);

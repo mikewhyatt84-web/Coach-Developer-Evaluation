@@ -1,10 +1,22 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { EvaluationResult, RUBRIC_SKILLS } from "../types";
 
-const apiKey = process.env.GEMINI_API_KEY || "";
+const getApiKey = () => {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key || key === "MY_GEMINI_API_KEY") {
+    return "";
+  }
+  return key;
+};
+
+const apiKey = getApiKey();
 const genAI = new GoogleGenerativeAI(apiKey);
 
 export async function evaluateObservations(notes: { [key: string]: string }): Promise<EvaluationResult> {
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is missing. If you are deploying to Vercel, please add it to your Environment Variables in the project dashboard and redeploy.");
+  }
+
   const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
   const prompt = `
