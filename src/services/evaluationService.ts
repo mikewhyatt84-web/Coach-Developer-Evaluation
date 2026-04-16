@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { EvaluationResult, RUBRIC_SKILLS } from "../types";
 
 const getApiKey = () => {
@@ -10,17 +10,15 @@ const getApiKey = () => {
 };
 
 const apiKey = getApiKey();
-const genAI = new GoogleGenerativeAI(apiKey);
+const ai = new GoogleGenAI({ apiKey: apiKey });
 
 export async function evaluateObservations(notes: { [key: string]: string }): Promise<EvaluationResult> {
   if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is missing. If you are deploying to Vercel, please add it to your Environment Variables in the project dashboard and redeploy.");
+    throw new Error("GEMINI_API_KEY is missing. Please check your Vercel Environment Variables.");
   }
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-
   const prompt = `
-    You are an AI assistant for a Coach Mentor. Your task is to transform raw field observations into a structured evaluation based on a specific rubric.
+    You are an AI assistant for a Coach Developer. Your task is to transform raw field observations into a structured evaluation based on a specific rubric.
 
     Observation Notes:
     ENVIRONMENT: ${notes.environment}
@@ -40,32 +38,51 @@ export async function evaluateObservations(notes: { [key: string]: string }): Pr
     4. Identify skills with "No Evidence Observed" for the "Missing Competencies" section.
     5. Write a 3-sentence "Coach's Summary" (encouraging, pedagogical, supportive).
     6. Write a "Feedforward Summary" (direct suggestions for future growth).
-
-    Response Format (JSON):
-    {
-      "items": [
-        { "skill": "Skill Name", "rating": "Rating", "evidence": "Actual quotes or paraphrased evidence" }
-      ],
-      "missingCompetencies": ["Skill Name"],
-      "coachSummary": "3-sentence summary",
-      "feedforwardSummary": "One or two paragraphs of constructive feedback"
-    }
-
-    Important: Use the exact language of the rubric for skills and ratings.
   `;
 
   try {
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            items: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  skill: { type: Type.STRING },
+                  rating: { type: Type.STRING },
+                  evidence: { type: Type.STRING }
+                },
+                required: ["skill", "rating", "evidence"]
+              }
+            },
+            missingCompetencies: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            },
+            coachSummary: { type: Type.STRING },
+            feedforwardSummary: { type: Type.STRING }
+          },
+          required: ["items", "missingCompetencies", "coachSummary", "feedforwardSummary"]
+        }
+      }
+    });
+
+    const text = response.text || "";
+    if (!text) throw new Error("Empty response from AI");
     
-    // Extract JSON from response (handling potential markdown formatting)
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("Invalid response format from AI");
-    
-    return JSON.parse(jsonMatch[0]) as EvaluationResult;
-  } catch (error) {
+    return JSON.parse(text) as EvaluationResult;
+  } catch (error: any) {
     console.error("Error evaluating observations:", error);
+    // Provide a more descriptive error if it's an API issue
+    if (error.message?.includes("API key")) {
+      throw new Error("Invalid Gemini API Key. Please verify your environment variables.");
+    }
     throw error;
   }
 }
